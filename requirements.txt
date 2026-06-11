@@ -74,7 +74,6 @@ shellingham==1.5.4
 simsimd==6.5.16
 six==1.17.0
 starlette==1.0.0
-stringzilla==4.6.0
 sympy==1.14.0
 threadpoolctl==3.6.0
 tifffile==2026.4.11

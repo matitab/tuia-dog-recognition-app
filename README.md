@@ -165,7 +165,7 @@ Con python estandar:
 python3.12 -m venv .venv
 
 # Windows
-py -3.12 -m venv .venv
+python -m venv .venv
 ```
 
 Alternativa con [uv](https://docs.astral.sh/uv/getting-started/installation/):
