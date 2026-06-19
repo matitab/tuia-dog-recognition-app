@@ -5,6 +5,12 @@ import logging
 from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
+import torch
+import torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as T
+from torchvision.models import ResNet50_Weights
+from PIL import Image
 
 import cv2
 import numpy as np
@@ -44,6 +50,17 @@ class SimilarityService:
         self.image_size = image_size
         self.model_name = model_name
         self.url_resolver = url_resolver
+        # Carga ResNet50
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._extractor = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        self._extractor.fc = nn.Identity()
+        self._extractor.eval().to(self._device)
+        self._transform = T.Compose([
+            T.Resize(256),
+            T.CenterCrop(self.image_size),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     def _load_image(self, source_path: str) -> np.ndarray:
         image = cv2.imread(str(source_path))
