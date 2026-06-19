@@ -103,7 +103,15 @@ class SimilarityService:
         Retorna una lista de Neighbor (path, breed, score) ordenada por score
         descendente.
         """
-        raise NotImplementedError("Etapa 1: implementar search_similar_images")
+        results = []
+        for record in self.store.all():
+            score = self.similarity(embedding, record.embedding)
+            results.append(Neighbor(
+                path=record.path,
+                breed=record.breed,
+                score=score,
+            ))
+        return sorted(results, key=lambda n: n.score, reverse=True)[:top_k]
 
     def predict_breed_from_neighbors(self, results: list[Neighbor]) -> tuple[str, float]:
         """
