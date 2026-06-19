@@ -68,7 +68,12 @@ class SimilarityService:
           - Recordar que la imagen llega en BGR (OpenCV).
         Retorna una lista de floats de dimension EMBEDDING_DIM.
         """
-        raise NotImplementedError("Etapa 1: implementar extract_embedding")
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  
+        pil_img = Image.fromarray(image_rgb)                
+        tensor = self._transform(pil_img).unsqueeze(0).to(self._device) 
+        with torch.no_grad():
+            embedding = self._extractor(tensor)
+        return embedding.squeeze(0).cpu().numpy().tolist()
 
     def search_similar_images(self, embedding: list[float], top_k: int) -> list[Neighbor]:
         """
