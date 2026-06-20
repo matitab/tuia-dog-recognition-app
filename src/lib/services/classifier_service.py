@@ -247,20 +247,15 @@ class ClassifierService:
             T.ToTensor(),
             T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
-
         modelo = self.load_model()
         modelo.eval()
         modelo.to(device)
-
-        # Extrae penúltima capa (sin el fc clasificador)
+        # extrae penúltima capa
         extractor = nn.Sequential(*list(modelo.children())[:-1])
         extractor.eval().to(device)
-
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         pil_img = Image.fromarray(image_rgb)
         tensor = tfm(pil_img).unsqueeze(0).to(device)
-
         with torch.no_grad():
             embedding = extractor(tensor)
-
         return embedding.squeeze().cpu().numpy().tolist()
