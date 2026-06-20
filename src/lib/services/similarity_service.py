@@ -112,7 +112,7 @@ class SimilarityService:
                 score=score,
             ))
         return sorted(results, key=lambda n: n.score, reverse=True)[:top_k]
-
+        
     def predict_breed_from_neighbors(self, results: list[Neighbor]) -> tuple[str, float]:
         """
         Predice la raza a partir de los vecinos recuperados (ej: voto
@@ -121,7 +121,14 @@ class SimilarityService:
         Si el mejor score esta por debajo de self.similarity_threshold se
         considera "unknown". Retorna (raza, score).
         """
-        raise NotImplementedError("Etapa 1: implementar predict_breed_from_neighbors")
+        votes: dict[str, float] = {}
+        if not results or results[0].score < self.similarity_threshold:
+            return ("unknown", results[0].score if results else 0.0)
+        for neighbor in results:
+            votes[neighbor.breed] = votes.get(neighbor.breed, 0.0) + neighbor.score
+        predicted_breed = max(votes, key=lambda b: votes[b])
+        best_score = results[0].score
+        return (predicted_breed, best_score)
 
     # ------------------------------------------------------------------
     # Helpers de similitud provistos
