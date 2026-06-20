@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-
 import numpy as np
 import torch
 import onnxruntime
@@ -13,6 +12,10 @@ import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
+import torchvision.transforms as T
+import torchvision.datasets as datasets
+from torch.utils.data import DataLoader
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +186,47 @@ class ClassifierService:
           {"accuracy": 0.91, "precision": 0.90, "recall": 0.89,
            "specificity": 0.99, "f1": 0.90}
         """
-        raise NotImplementedError("Etapa 2: implementar evaluate_classifier")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tfm_test = T.Compose([
+            T.Resize(256),
+            T.CenterCrop(self.image_size),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        test_ds = datasets.ImageFolder(self.dataset_path / "test", transform=tfm_test)
+        test_loader = DataLoader(test_ds, batch_size=32, shuffle=False, num_workers=2)
+
+        modelo = self.load_model()
+        modelo.eval()
+        modelo.to(device)
+
+        all_preds, all_labels = [], []
+        with torch.no_grad():
+            for imgs, y in test_loader:
+                imgs = imgs.to(device)
+                preds = modelo(imgs).argmax(1).cpu()
+                all_preds.extend(preds.numpy())
+                all_labels.extend(y.numpy())
+
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+
+        cm = confusion_matrix(all_labels, all_preds)
+        fp = cm.sum(axis=0) - np.diag(cm)
+        fn = cm.sum(axis=1) - np.diag(cm)
+        tp = np.diag(cm)
+        tn = cm.sum() - (fp + fn + tp)
+        specificity = float(np.mean(tn / (tn + fp + 1e-8)))
+
+        return {
+            "accuracy": float((all_preds == all_labels).mean()),
+            "precision": float(precision_score(all_labels, all_preds, average="macro", zero_division=0)),
+            "recall": float(recall_score(all_labels, all_preds, average="macro", zero_division=0)),
+            "specificity": specificity,
+            "f1": float(f1_score(all_labels, all_preds, average="macro", zero_division=0)),
+        }
 
     def extract_custom_embedding(self, image: np.ndarray) -> list[float]:
         """
