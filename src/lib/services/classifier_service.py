@@ -7,9 +7,14 @@ from typing import Any
 import numpy as np
 import torch
 import onnxruntime
+import torchvision.models as models
+import torchvision.transforms as T
+import torchvision.datasets as datasets
+from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
 
 logger = logging.getLogger(__name__)
-
 
 class ClassifierService:
     """Etapa 2: entrenamiento y comparacion de modelos de clasificacion.
@@ -96,7 +101,75 @@ class ClassifierService:
           - Guardar el checkpoint resultante en self.active_checkpoint
             (ej: models/resnet18_finetuned.pth).
         """
-        raise NotImplementedError("Etapa 2: implementar train_classifier")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        NUM_CLASES = 70
+
+        # Preprocesamiento
+        tfm_train = T.Compose([
+            T.Resize(256),
+            T.RandomHorizontalFlip(),
+            T.RandomRotation(15),
+            T.ColorJitter(brightness=0.2, contrast=0.2),
+            T.CenterCrop(self.image_size),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        tfm_val = T.Compose([
+            T.Resize(256),
+            T.CenterCrop(self.image_size),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        train_ds = datasets.ImageFolder(self.dataset_path / "train", transform=tfm_train)
+        val_ds = datasets.ImageFolder(self.dataset_path / "valid", transform=tfm_val)
+        train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=2)
+        val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, num_workers=2)
+
+        # Inicializa el modelo
+        modelo = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        for p in modelo.parameters():
+            p.requires_grad = False
+        modelo.fc = nn.Linear(modelo.fc.in_features, NUM_CLASES)
+        modelo = modelo.to(device)
+
+        criterio = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(modelo.fc.parameters(), lr=1e-3)
+
+        # Lo entrena
+        EPOCHS = 10
+        for ep in range(1, EPOCHS + 1):
+            modelo.train()
+            ok, total, loss_sum = 0, 0, 0.0
+            for imgs, y in train_loader:
+                imgs, y = imgs.to(device), y.to(device)
+                optimizer.zero_grad()
+                out = modelo(imgs)
+                loss = criterio(out, y)
+                loss.backward()
+                optimizer.step()
+                ok += (out.argmax(1) == y).sum().item()
+                total += y.size(0)
+                loss_sum += loss.item() * y.size(0)
+
+            modelo.eval()
+            ok_v, total_v = 0, 0
+            with torch.no_grad():
+                for imgs, y in val_loader:
+                    imgs, y = imgs.to(device), y.to(device)
+                    out_v = modelo(imgs)
+                    ok_v += (out_v.argmax(1) == y).sum().item()
+                    total_v += y.size(0)
+
+            logger.info(
+                "Época %d/%d | train acc %.3f | val acc %.3f",
+                ep, EPOCHS, ok/total, ok_v/total_v
+            )
+
+        # Guarda el checkpoint
+        self.active_checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(modelo, self.active_checkpoint)
+        logger.info("Checkpoint guardado en %s", self.active_checkpoint)
+        self._loaded[self.active_model_name] = modelo
 
     def evaluate_classifier(self) -> dict[str, float]:
         """
