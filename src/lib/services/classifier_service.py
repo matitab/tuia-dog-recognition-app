@@ -3,19 +3,19 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
+
+import cv2
 import numpy as np
 import torch
-import onnxruntime
-import torchvision.models as models
-import torchvision.transforms as T
-import torchvision.datasets as datasets
-from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as T
 import torchvision.datasets as datasets
-from torch.utils.data import DataLoader
+import torchvision.models as models
+import torchvision.transforms as T
+import onnxruntime
+from PIL import Image
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -238,4 +238,29 @@ class ClassifierService:
         La imagen llega en BGR (OpenCV). Retorna una lista de floats de
         dimension EMBEDDING_DIM.
         """
-        raise NotImplementedError("Etapa 2: implementar extract_custom_embedding")
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tfm = T.Compose([
+            T.Resize(256),
+            T.CenterCrop(self.image_size),
+            T.ToTensor(),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        modelo = self.load_model()
+        modelo.eval()
+        modelo.to(device)
+
+        # Extrae penúltima capa (sin el fc clasificador)
+        extractor = nn.Sequential(*list(modelo.children())[:-1])
+        extractor.eval().to(device)
+
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(image_rgb)
+        tensor = tfm(pil_img).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            embedding = extractor(tensor)
+
+        return embedding.squeeze().cpu().numpy().tolist()
