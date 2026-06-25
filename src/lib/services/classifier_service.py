@@ -91,7 +91,7 @@ class ClassifierService:
     # Etapa 2: funciones a implementar
     # ------------------------------------------------------------------
 
-    def train_classifier(self) -> None:
+    def train_classifier(self) -> dict:
         """
         Entrena el clasificador de razas sobre el dataset (self.dataset_path).
 
@@ -137,6 +137,7 @@ class ClassifierService:
 
         criterio = nn.CrossEntropyLoss()
         optimizer = optim.Adam(modelo.fc.parameters(), lr=1e-3)
+        historia = {"train_acc": [], "val_acc": [], "train_loss": [], "val_loss": []}
 
         # Lo entrena
         EPOCHS = 10
@@ -155,13 +156,20 @@ class ClassifierService:
                 loss_sum += loss.item() * y.size(0)
 
             modelo.eval()
-            ok_v, total_v = 0, 0
+            ok_v, total_v, loss_v_sum = 0, 0, 0.0
             with torch.no_grad():
                 for imgs, y in val_loader:
                     imgs, y = imgs.to(device), y.to(device)
                     out_v = modelo(imgs)
+                    loss_v = criterio(out_v, y)
                     ok_v += (out_v.argmax(1) == y).sum().item()
                     total_v += y.size(0)
+                    loss_v_sum += loss_v.item() * y.size(0)
+
+            historia["train_acc"].append(ok / total)
+            historia["val_acc"].append(ok_v / total_v)
+            historia["train_loss"].append(loss_sum / total)
+            historia["val_loss"].append(loss_v_sum / total_v)
 
             logger.info(
                 "Época %d/%d | train acc %.3f | val acc %.3f",
@@ -173,6 +181,8 @@ class ClassifierService:
         torch.save(modelo, self.active_checkpoint)
         logger.info("Checkpoint guardado en %s", self.active_checkpoint)
         self._loaded[self.active_model_name] = modelo
+
+        return historia
 
     def evaluate_classifier(self) -> dict[str, float]:
         """
