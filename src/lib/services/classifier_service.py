@@ -19,6 +19,38 @@ from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
+class CNNCustom(nn.Module):
+    def __init__(self, num_classes: int = 70) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d(4),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(256 * 4 * 4, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.4),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
 class ClassifierService:
     """Etapa 2: entrenamiento y comparacion de modelos de clasificacion.
 
@@ -128,19 +160,24 @@ class ClassifierService:
         train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=2)
         val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, num_workers=2)
 
-        # Inicializa el modelo
-        modelo = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        for p in modelo.parameters():
-            p.requires_grad = False
-        modelo.fc = nn.Linear(modelo.fc.in_features, NUM_CLASES)
-        modelo = modelo.to(device)
-
+        # Seleccion del modelo segun active_model_name
+        if self.active_model_name == "cnn_custom":
+            modelo = CNNCustom(num_classes=NUM_CLASES).to(device)
+            optimizer = optim.Adam(modelo.parameters(), lr=1e-3)
+            EPOCHS = 20
+        else:
+            # Modelo A: ResNet18 fine-tuned (solo head)
+            modelo = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            for p in modelo.parameters():
+                p.requires_grad = False
+            modelo.fc = nn.Linear(modelo.fc.in_features, NUM_CLASES)
+            modelo = modelo.to(device)
+            optimizer = optim.Adam(modelo.fc.parameters(), lr=1e-3)
+            EPOCHS = 10
         criterio = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(modelo.fc.parameters(), lr=1e-3)
         historia = {"train_acc": [], "val_acc": [], "train_loss": [], "val_loss": []}
 
         # Lo entrena
-        EPOCHS = 10
         for ep in range(1, EPOCHS + 1):
             modelo.train()
             ok, total, loss_sum = 0, 0, 0.0
